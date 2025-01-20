@@ -40,7 +40,8 @@ def save_data_to_csv(data):
     for row in rows:
         parts = row.split(",")
         if len(parts) == 8:  # Upewnij się, że wiersz ma odpowiednią liczbę elementów
-            date = f"{parts[0]}-{parts[1]}-{parts[2]}"
+            # Dodawanie zer wiodących do daty
+            date = f"{int(parts[0]):04d}-{int(parts[1]):02d}-{int(parts[2]):02d}"
             if date not in daily_data:
                 daily_data[date] = []
             daily_data[date].append(parts)
@@ -57,6 +58,7 @@ def save_data_to_csv(data):
         with open(file_path, mode="a", newline="") as file:
             writer = csv.writer(file)
             writer.writerows(entries)
+
 
 def load_existing_dates():
     """Ładuje daty, dla których dane już istnieją."""
@@ -80,8 +82,6 @@ def plot_data(time_period, frame):
                 file_date = file.split("_")[1].split(".")[0]
                 if time_period == "Dzień" and file_date == datetime.now().strftime("%Y-%m-%d"):
                     data = pd.read_csv(file)
-                    if 'Timestamp' not in data.columns:
-                        data['Timestamp'] = pd.to_datetime(data[['Year', 'Month', 'Day', 'Hour', 'Minute', 'Second']])
                     all_data.append(data)
                 elif time_period == "Tydzień" and datetime.strptime(file_date, "%Y-%m-%d") >= datetime.now() - pd.Timedelta(days=7):
                     data = pd.read_csv(file)
@@ -95,9 +95,29 @@ def plot_data(time_period, frame):
 
         if all_data:
             full_data = pd.concat(all_data)
+            full_data['Timestamp'] = pd.to_datetime(full_data[['Year', 'Month', 'Day', 'Hour', 'Minute', 'Second']])
+            full_data = full_data.sort_values(by='Timestamp')  # Sortowanie danych po czasie
+
+            # Ustawienia zakresów czasowych
+            now = datetime.now()
+            if time_period == "Dzień":
+                start_time = datetime(now.year, now.month, now.day)
+                end_time = start_time + pd.Timedelta(days=1)
+            elif time_period == "Tydzień":
+                start_time = now - pd.Timedelta(days=7)
+                end_time = now
+            elif time_period == "Miesiąc":
+                start_time = now - pd.Timedelta(days=30)
+                end_time = now
+            elif time_period == "Rok":
+                start_time = now - pd.Timedelta(days=365)
+                end_time = now
+
+            # Próbkowanie danych (dla tygodnia, miesiąca, roku)
             if time_period in ["Tydzień", "Miesiąc", "Rok"]:
                 full_data = resample_data(full_data, '1h')  # Próbkowanie co godzinę
 
+            # Tworzenie wykresu
             fig, ax = plt.subplots(figsize=(10, 6))
             ax.scatter(full_data['Timestamp'], full_data['Temperature'], label='Temperatura', alpha=0.7, s=10)
             ax.scatter(full_data['Timestamp'], full_data['Humidity'], label='Wilgotność', alpha=0.7, s=10)
@@ -107,6 +127,9 @@ def plot_data(time_period, frame):
             ax.legend()
             ax.grid(True)
             fig.autofmt_xdate()
+
+            # Ustawienie zakresu osi X na podstawie okresu czasu
+            ax.set_xlim(start_time, end_time)
 
             for widget in frame.winfo_children():
                 widget.destroy()
